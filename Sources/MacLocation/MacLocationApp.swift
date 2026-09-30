@@ -37,7 +37,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// macOS stores where the user ⌘-dragged a status item under this key, as a
     /// distance from the right-hand edge of the screen. It's undocumented but stable.
     private static let positionKey = "NSStatusItem Preferred Position \(statusItemName)"
-    private static let didPlaceIconKey = "DidPlaceStatusItemNextToClock"
+    /// Our own copy of the icon position. macOS deletes `positionKey` whenever the
+    /// item is removed, including when the app quits, so it can't be relied on alone.
+    private static let savedPositionKey = "IconPosition"
+    private static let revealMenuKey = "RevealMenuOnLaunch"
+    /// Distance from the right edge that places the icon next to the clock.
+    private static let nextToClock = 1.0
+
+    private var isRelaunching = false
 
     // MARK: - Lifecycle
 
@@ -45,12 +52,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installMainMenu()
 
         // New menu bar items appear at the far left of the icons, which on notched
-        // MacBooks is often hidden behind the notch. Start next to the clock instead;
-        // after that, respect wherever the user ⌘-drags it.
-        if !UserDefaults.standard.bool(forKey: AppDelegate.didPlaceIconKey) {
-            UserDefaults.standard.set(true, forKey: AppDelegate.didPlaceIconKey)
-            UserDefaults.standard.set(1.0, forKey: AppDelegate.positionKey)
-        }
+        // MacBooks is often hidden behind the notch. Restore the saved position (next
+        // to the clock by default) before the item is created, so macOS places it there.
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "DidPlaceStatusItemNextToClock")
+        let position = defaults.object(forKey: AppDelegate.savedPositionKey) as? Double ?? AppDelegate.nextToClock
+        defaults.set(position, forKey: AppDelegate.positionKey)
         createStatusItem()
 
         store.$presets
@@ -65,6 +72,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // A menu bar app has no window, so on first run open the editor to show it started.
         if store.isFirstLaunch { showEditor() }
+
+        if defaults.bool(forKey: AppDelegate.revealMenuKey) {
+            defaults.removeObject(forKey: AppDelegate.revealMenuKey)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.statusItem.button?.performClick(nil)
+            }
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if !isRelaunching { rememberIconPosition() }
+    }
+
+    /// Copies the position macOS recorded (e.g. after the user ⌘-drags the icon)
+    /// into our own setting, so it survives the item being removed.
+    private func rememberIconPosition() {
+        if let position = UserDefaults.standard.object(forKey: AppDelegate.positionKey) as? Double {
+            UserDefaults.standard.set(position, forKey: AppDelegate.savedPositionKey)
+        }
     }
 
     private func createStatusItem() {
@@ -82,23 +108,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Recreates the status item at the right-hand end of the menu bar icons, next to the clock.
+    /// This works from the status item's own menu; removing the item deletes macOS's saved
+    /// position, so it is written back immediately before the item is recreated.
     @objc private func moveIconNextToClock() {
+        UserDefaults.standard.set(AppDelegate.nextToClock, forKey: AppDelegate.savedPositionKey)
         NSStatusBar.system.removeStatusItem(statusItem)
-        UserDefaults.standard.set(1.0, forKey: AppDelegate.positionKey)
+        UserDefaults.standard.set(AppDelegate.nextToClock, forKey: AppDelegate.positionKey)
         createStatusItem()
     }
 
-    /// Moving the icon only takes effect when MacLocation isn't the active app, as is
-    /// the case when using its menu. From the editor window, hide the app first, then
-    /// move the icon and open its menu so it's clear where it went.
+    /// Recreating the item from the editor window doesn't reliably move it, so instead
+    /// save the new position and relaunch, which places it the same way as at login.
+    /// The relaunched app opens the icon's menu so it's clear where it went.
     private func moveIconFromEditor() {
-        NSApp.hide(nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.moveIconNextToClock()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.statusItem.button?.performClick(nil)
-            }
+        let bundlePath = Bundle.main.bundlePath
+        guard bundlePath.hasSuffix(".app") else {
+            moveIconNextToClock() // Running via `swift run`; there's no bundle to relaunch.
+            return
         }
+
+        let defaults = UserDefaults.standard
+        defaults.set(AppDelegate.nextToClock, forKey: AppDelegate.savedPositionKey)
+        defaults.set(true, forKey: AppDelegate.revealMenuKey)
+
+        let relaunch = Process()
+        relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+        relaunch.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", bundlePath]
+        do {
+            try relaunch.run()
+        } catch {
+            defaults.removeObject(forKey: AppDelegate.revealMenuKey)
+            showAlert(title: "Couldn’t relaunch MacLocation", message: error.localizedDescription)
+            return
+        }
+        isRelaunching = true
+        NSApp.terminate(nil)
     }
 
     /// Double-clicking the app while it is already running opens the preset editor,
@@ -178,6 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Menu
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        rememberIconPosition()
         menu.removeAllItems()
         infos = AppDelegate.fetchInfos(store.services)
         updateStatusButton()
