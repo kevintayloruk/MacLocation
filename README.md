@@ -50,6 +50,16 @@ a downloaded copy, right-click it and choose **Open** (or run
 Changes are made with Apple's `/usr/sbin/networksetup`. If macOS requires
 administrator rights for the change, you'll get the standard password prompt.
 
+### Can't see the menu bar icon?
+
+MacLocation has no Dock icon or main window; it lives only in the menu bar.
+Double-click the app again to open the preset editor. If the icon is missing:
+
+- On MacBooks with a notch, a crowded menu bar can hide icons behind the notch.
+  Quit a few other menu bar apps, or ⌘-drag icons to make room.
+- On macOS 26 or later, check **System Settings → Menu Bar** and make sure
+  MacLocation is allowed in the menu bar.
+
 ### presets.json format
 
 ```json

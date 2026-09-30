@@ -7,6 +7,8 @@ final class PresetStore: ObservableObject {
     }
 
     let fileURL: URL
+    /// True when no presets file existed yet, i.e. the app is running for the first time.
+    let isFirstLaunch: Bool
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -16,7 +18,9 @@ final class PresetStore: ObservableObject {
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode([Preset].self, from: data) {
             presets = decoded
+            isFirstLaunch = false
         } else {
+            isFirstLaunch = !FileManager.default.fileExists(atPath: fileURL.path)
             presets = PresetStore.examplePresets()
             save()
         }

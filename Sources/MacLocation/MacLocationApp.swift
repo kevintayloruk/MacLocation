@@ -5,9 +5,12 @@ import SwiftUI
 
 @main
 enum MacLocationMain {
+    // NSApplication.delegate is weak, so the delegate must be kept alive here;
+    // a local variable can be released by the optimiser before app.run().
+    private static let delegate = AppDelegate()
+
     static func main() {
         let app = NSApplication.shared
-        let delegate = AppDelegate()
         app.delegate = delegate
         app.setActivationPolicy(.accessory)
         app.run()
@@ -38,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.image = NSImage(systemSymbolName: "network", accessibilityDescription: "MacLocation")
         statusItem.button?.image?.isTemplate = true
         statusItem.button?.imagePosition = .imageLeading
+        statusItem.autosaveName = "MacLocationStatusItem"
+        statusItem.isVisible = true
 
         let menu = NSMenu()
         menu.delegate = self
@@ -53,6 +58,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.refreshInBackground()
         }
         refreshInBackground()
+
+        // A menu bar app has no window, so on first run open the editor to show it started.
+        if store.isFirstLaunch { showEditor() }
+    }
+
+    /// Double-clicking the app while it is already running opens the preset editor,
+    /// which also helps if the menu bar icon is hidden (e.g. behind the notch).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showEditor()
+        return false
     }
 
     /// An accessory app has no visible menu bar, but a main menu is still needed
