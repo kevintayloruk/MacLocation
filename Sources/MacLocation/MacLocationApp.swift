@@ -81,27 +81,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatusButton()
     }
 
-    @objc private func moveIconFromMenu() {
-        moveIconNextToClock(revealMenu: false)
+    /// Recreates the status item at the right-hand end of the menu bar icons, next to the clock.
+    @objc private func moveIconNextToClock() {
+        NSStatusBar.system.removeStatusItem(statusItem)
+        UserDefaults.standard.set(1.0, forKey: AppDelegate.positionKey)
+        createStatusItem()
     }
 
-    /// Recreates the status item at the right-hand end of the menu bar icons, next to the clock.
-    /// With `revealMenu`, its menu is then opened so the user can see where it went.
-    func moveIconNextToClock(revealMenu: Bool) {
-        NSStatusBar.system.removeStatusItem(statusItem)
-
-        // Removing the item makes macOS record its old position, and that can happen
-        // after this call returns (e.g. when triggered from the editor window). Wait for
-        // it, so the old position doesn't overwrite the new one.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            UserDefaults.standard.set(1.0, forKey: AppDelegate.positionKey)
-            UserDefaults.standard.removeObject(forKey: "NSStatusItem Visible \(AppDelegate.statusItemName)")
-            self.createStatusItem()
-
-            if revealMenu {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self.statusItem.button?.performClick(nil)
-                }
+    /// Moving the icon only takes effect when MacLocation isn't the active app, as is
+    /// the case when using its menu. From the editor window, hide the app first, then
+    /// move the icon and open its menu so it's clear where it went.
+    private func moveIconFromEditor() {
+        NSApp.hide(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.moveIconNextToClock()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.statusItem.button?.performClick(nil)
             }
         }
     }
@@ -240,7 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(actionItem("Open Network Settings…", #selector(openNetworkSettings)))
         menu.addItem(.separator())
 
-        menu.addItem(actionItem("Move Icon Next to Clock", #selector(moveIconFromMenu)))
+        menu.addItem(actionItem("Move Icon Next to Clock", #selector(moveIconNextToClock)))
 
         let showName = actionItem("Show Preset Name in Menu Bar", #selector(toggleShowName))
         showName.state = showNameInMenuBar ? .on : .off
@@ -334,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let view = PresetEditorView(
                 store: store,
                 onApply: { [weak self] preset in self?.apply(preset) },
-                onMoveIcon: { [weak self] in self?.moveIconNextToClock(revealMenu: true) })
+                onMoveIcon: { [weak self] in self?.moveIconFromEditor() })
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "MacLocation Presets"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
