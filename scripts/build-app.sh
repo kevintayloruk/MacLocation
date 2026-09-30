@@ -22,6 +22,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/MacLocation" "$APP/Contents/MacOS/MacLocation"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
+# App icon, rendered from scripts/make-icon.swift.
+rm -rf build/AppIcon.iconset
+swift scripts/make-icon.swift build/AppIcon.iconset
+iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
+
 # Ad-hoc signature so macOS will run it locally and allow Launch at Login.
 codesign --force --sign - "$APP"
 

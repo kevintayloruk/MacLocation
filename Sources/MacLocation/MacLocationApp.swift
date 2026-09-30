@@ -28,26 +28,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private let showNameKey = "ShowPresetNameInMenuBar"
     private var showNameInMenuBar: Bool {
-        get { UserDefaults.standard.object(forKey: showNameKey) as? Bool ?? true }
+        // Off by default: a wider item is more likely to be pushed behind the notch.
+        get { UserDefaults.standard.object(forKey: showNameKey) as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: showNameKey) }
     }
+
+    private static let statusItemName = "MacLocationStatusItem"
+    /// macOS stores where the user ⌘-dragged a status item under this key, as a
+    /// distance from the right-hand edge of the screen. It's undocumented but stable.
+    private static let positionKey = "NSStatusItem Preferred Position \(statusItemName)"
+    private static let didPlaceIconKey = "DidPlaceStatusItemNextToClock"
 
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "network", accessibilityDescription: "MacLocation")
-        statusItem.button?.image?.isTemplate = true
-        statusItem.button?.imagePosition = .imageLeading
-        statusItem.autosaveName = "MacLocationStatusItem"
-        statusItem.isVisible = true
-
-        let menu = NSMenu()
-        menu.delegate = self
-        menu.autoenablesItems = false
-        statusItem.menu = menu
+        // New menu bar items appear at the far left of the icons, which on notched
+        // MacBooks is often hidden behind the notch. Start next to the clock instead;
+        // after that, respect wherever the user ⌘-drags it.
+        if !UserDefaults.standard.bool(forKey: AppDelegate.didPlaceIconKey) {
+            UserDefaults.standard.set(true, forKey: AppDelegate.didPlaceIconKey)
+            UserDefaults.standard.set(1.0, forKey: AppDelegate.positionKey)
+        }
+        createStatusItem()
 
         store.$presets
             .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
@@ -61,6 +65,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // A menu bar app has no window, so on first run open the editor to show it started.
         if store.isFirstLaunch { showEditor() }
+    }
+
+    private func createStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.autosaveName = AppDelegate.statusItemName
+        statusItem.isVisible = true
+        statusItem.button?.image = StatusIcon.ethernetPort()
+        statusItem.button?.imagePosition = .imageLeading
+
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.autoenablesItems = false
+        statusItem.menu = menu
+        updateStatusButton()
+    }
+
+    /// Recreates the status item at the right-hand end of the menu bar icons, next to the clock.
+    @objc func moveIconNextToClock() {
+        NSStatusBar.system.removeStatusItem(statusItem)
+        UserDefaults.standard.set(1.0, forKey: AppDelegate.positionKey)
+        createStatusItem()
     }
 
     /// Double-clicking the app while it is already running opens the preset editor,
@@ -197,6 +222,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(actionItem("Open Network Settings…", #selector(openNetworkSettings)))
         menu.addItem(.separator())
 
+        menu.addItem(actionItem("Move Icon Next to Clock", #selector(moveIconNextToClock)))
+
         let showName = actionItem("Show Preset Name in Menu Bar", #selector(toggleShowName))
         showName.state = showNameInMenuBar ? .on : .off
         menu.addItem(showName)
@@ -286,7 +313,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showEditor() {
         if editorWindow == nil {
-            let view = PresetEditorView(store: store) { [weak self] preset in self?.apply(preset) }
+            let view = PresetEditorView(
+                store: store,
+                onApply: { [weak self] preset in self?.apply(preset) },
+                onMoveIcon: { [weak self] in self?.moveIconNextToClock() })
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "MacLocation Presets"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]

@@ -56,7 +56,10 @@ MacLocation has no Dock icon or main window; it lives only in the menu bar.
 Double-click the app again to open the preset editor. If the icon is missing:
 
 - On MacBooks with a notch, a crowded menu bar can hide icons behind the notch.
-  Quit a few other menu bar apps, or ⌘-drag icons to make room.
+  MacLocation places its icon next to the clock on first launch. If it's hidden
+  anyway, double-click the app and click the menu bar button at the bottom of
+  the preset editor (**Move menu bar icon next to the clock**). You can also
+  ⌘-drag the icon anywhere you like; macOS remembers where you put it.
 - On macOS 26 or later, check **System Settings → Menu Bar** and make sure
   MacLocation is allowed in the menu bar.
 

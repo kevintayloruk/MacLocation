@@ -4,6 +4,7 @@ import SwiftUI
 struct PresetEditorView: View {
     @ObservedObject var store: PresetStore
     let onApply: (Preset) -> Void
+    let onMoveIcon: () -> Void
 
     @State private var selection: Preset.ID?
     @State private var services: [String] = []
@@ -57,6 +58,8 @@ struct PresetEditorView: View {
                     .help("Duplicate preset")
                     .disabled(selection == nil)
                 Spacer()
+                Button(action: onMoveIcon) { Image(systemName: "menubar.arrow.up.rectangle") }
+                    .help("Move the menu bar icon next to the clock (if it's hidden behind the notch)")
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([store.fileURL])
                 } label: {
